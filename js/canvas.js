@@ -45,7 +45,7 @@ function drawHints() {
     if (!predictions.length) return;
     // 順位に応じたopacity（1位が最も濃い）
     const ALPHAS = [70, 40, 20, 15, 10];
-    const MARKER_SIZES = 10;
+    const MARKER_SIZES = [20, 15, 10, 8, 6];
     const STROKE_WEIGHT = 20;
 
     predictions.slice(0, 5).forEach((pred, i) => {
