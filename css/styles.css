@@ -90,7 +90,8 @@ html,
 body {
     height: 100%;
     overflow: hidden;
-    touch-action: none;
+    touch-action: pan-y;
+    overscroll-behavior-y: auto;
     -webkit-tap-highlight-color: transparent;
     -webkit-touch-callout: none;
     user-select: none;
@@ -180,6 +181,7 @@ body {
     border-radius: var(--radius-lg);
     overflow: hidden;
     touch-action: none;
+    overscroll-behavior: contain;
     width: 320px;
     height: 320px;
     box-shadow: var(--shadow-md);
@@ -328,6 +330,8 @@ body {
         background var(--duration-fast) var(--ease-out),
         color var(--duration-fast) var(--ease-out);
     white-space: nowrap;
+    touch-action: manipulation;
+    -webkit-touch-callout: default;
 }
 
 .btn:hover {
