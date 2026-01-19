@@ -10,13 +10,18 @@ function renderUI(cands) {
     }
 
     hintEl.style.display = 'none';
-    floatEl.innerHTML = cands.slice(0, 5).map((c, i) => `
-        <div class="pred-item">
+    floatEl.innerHTML = cands.slice(0, 5).map((c, i) => {
+        // ストローク数が完全に一致しているかチェック（完成している）
+        const isComplete = userStrokes.length > 0 && c.strokes.length === userStrokes.length;
+        const completeClass = isComplete ? 'pred-item-complete' : '';
+        return `
+        <div class="pred-item ${completeClass}">
             <div class="pred-rank" data-r="${i + 1}">${i + 1}</div>
             <span class="pred-char">${c.char}</span>
             <span class="pred-score">${Math.round(c.score)}%</span>
         </div>
-    `).join('');
+    `;
+    }).join('');
 }
 
 function clearCanvas() {
