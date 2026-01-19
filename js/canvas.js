@@ -125,12 +125,15 @@ function mouseReleased() {
 function touchStarted() {
     if (touches.length > 0) {
         const t = touches[0];
+        // キャンバス内のタッチのみ処理
         if (t.x >= 0 && t.x <= canvasSize && t.y >= 0 && t.y <= canvasSize) {
             isDrawing = true;
             currentStroke = [{ x: t.x, y: t.y }];
-            return false;
+            return false; // キャンバス内のみデフォルト動作を防止
         }
     }
+    // キャンバス外はデフォルト動作を許可（ボタンクリック等）
+    return true;
 }
 
 function touchMoved() {
@@ -139,8 +142,10 @@ function touchMoved() {
         if (t.x >= 0 && t.x <= canvasSize && t.y >= 0 && t.y <= canvasSize) {
             currentStroke.push({ x: t.x, y: t.y });
         }
-        return false;
+        return false; // 描画中はスクロール防止
     }
+    // 描画中でなければデフォルト動作を許可（スクロール等）
+    return true;
 }
 
 function touchEnded() {
@@ -149,6 +154,8 @@ function touchEnded() {
         currentStroke = [];
         updatePredictions();
     }
+    const wasDrawing = isDrawing;
     isDrawing = false;
-    return false;
+    // 描画していた場合のみデフォルト動作を防止
+    return !wasDrawing;
 }

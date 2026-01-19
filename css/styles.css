@@ -86,15 +86,8 @@ html {
     text-rendering: optimizeLegibility;
 }
 
-html,
-body {
+html {
     height: 100%;
-    overflow: hidden;
-    touch-action: pan-y;
-    overscroll-behavior-y: auto;
-    -webkit-tap-highlight-color: transparent;
-    -webkit-touch-callout: none;
-    user-select: none;
 }
 
 body {
@@ -105,9 +98,13 @@ body {
     color: var(--text-primary);
     display: flex;
     flex-direction: column;
-    height: 100dvh;
+    min-height: 100dvh;
     padding: var(--space-4);
     gap: var(--space-3);
+    overflow-y: auto;
+    overscroll-behavior-y: auto;
+    -webkit-tap-highlight-color: transparent;
+    user-select: none;
 }
 
 /* ============================================
