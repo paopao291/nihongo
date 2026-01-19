@@ -243,6 +243,10 @@ body {
     border-radius: var(--radius-md);
     box-shadow: var(--shadow-sm);
     animation: predSlideIn var(--duration-normal) var(--ease-out) backwards;
+    transition:
+        background var(--duration-normal) var(--ease-out),
+        border-color var(--duration-normal) var(--ease-out),
+        opacity var(--duration-normal) var(--ease-out);
 }
 
 /* 完成した文字（ストローク数が一致している）のスタイル */
@@ -250,6 +254,8 @@ body {
     background: var(--bg-subtle);
     border-color: var(--border-subtle);
     opacity: 0.7;
+    /* アニメーションを無効化して、スムーズなトランジションのみにする */
+    animation: none;
 }
 
 .pred-item:nth-child(1) { animation-delay: 0ms; }
