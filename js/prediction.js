@@ -943,12 +943,29 @@ function updatePredictions() {
     // 1ストローク目では閾値を下げてより多くの候補を表示
     const scoreThreshold = userStrokes.length === 1 ? 20 : 30;
 
-    for (let [char, data] of Object.entries(hiraganaData)) {
+    // 同じ文字の複数バリアントを統合するためのマップ
+    const charScoreMap = {}; // key: 表示用文字, value: { score, strokes }
+    
+    for (let [key, data] of Object.entries(hiraganaData)) {
+        const displayChar = data.char || key; // 表示用の文字（バリアントID除去）
         const score = USE_SIMPLE_MODE 
             ? calcScoreSimple(userStrokes, data.strokes)
             : calcScore(userStrokes, data.strokes);
+        
+        // 同じ文字の複数バリアントがある場合、最高スコアのものだけを保持
+        if (!charScoreMap[displayChar] || score > charScoreMap[displayChar].score) {
+            charScoreMap[displayChar] = {
+                char: displayChar,
+                score: score,
+                strokes: data.strokes
+            };
+        }
+    }
+    
+    // マップから候補リストを作成
+    for (const { char, score, strokes } of Object.values(charScoreMap)) {
         if (score > scoreThreshold) {
-            cands.push({ char, score, strokes: data.strokes });
+            cands.push({ char, score, strokes });
         }
     }
 

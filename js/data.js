@@ -252,6 +252,8 @@ function parseTomoeData(text) {
     const lines = text.trim().split('\n');
     const chars = {};
     let i = 0;
+    let variantCount = {}; // 各文字のバリアント数をカウント
+    
     while (i < lines.length) {
         const line = lines[i].trim();
         if (!line) { i++; continue; }
@@ -271,7 +273,21 @@ function parseTomoeData(text) {
             if (pts.length) strokes.push(pts);
             i++;
         }
-        chars[char] = { strokes };
+        // 同じ文字が複数回現れた場合、別エントリとして保存
+        // 例：「そ」が2回現れたら「そ」と「そ」として別々に保存
+        // ただし、キーが重複する場合は後から来たもので上書きされるため、
+        // バリアント数をカウントしてユニークなキーを作成
+        if (!variantCount[char]) {
+            variantCount[char] = 0;
+        }
+        variantCount[char]++;
+        
+        // バリアントが複数ある場合は内部IDを付与（表示時には除去）
+        const key = variantCount[char] > 1 ? `${char}__v${variantCount[char]}` : char;
+        chars[key] = { 
+            char: char,  // 表示用の文字（元の文字）
+            strokes: strokes 
+        };
     }
     return chars;
 }
