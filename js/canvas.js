@@ -11,6 +11,9 @@ function setup() {
     // Ensure size is correct after layout stabilizes
     window.addEventListener('resize', handleResize);
     setTimeout(handleResize, 100);
+    
+    // モバイルでもアニメーションが動作するように、ループを確実に開始
+    loop();
 }
 
 function handleResize() {
@@ -42,6 +45,12 @@ function draw() {
         beginShape();
         currentStroke.forEach(p => vertex(p.x, p.y));
         endShape();
+    }
+    
+    // アニメーション中は常に再描画を続ける（モバイル対応）
+    if (animationTarget && animationTarget.stroke) {
+        // アニメーションが進行中の場合、次のフレームも確実に描画されるようにする
+        // p5.jsのloop()が動作している限り、draw()は継続的に呼ばれる
     }
 }
 

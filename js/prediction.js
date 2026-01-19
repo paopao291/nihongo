@@ -988,4 +988,13 @@ function updatePredictions() {
     
     // アニメーションをリセット
     shouldResetAnimation = true;
+    
+    // モバイルでもアニメーションが動作するように、明示的に再描画をトリガー
+    if (typeof redraw === 'function') {
+        redraw();
+    }
+    // ループが停止している場合は再開
+    if (typeof loop === 'function' && typeof isLooping === 'function' && !isLooping()) {
+        loop();
+    }
 }
