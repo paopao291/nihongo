@@ -1,40 +1,168 @@
-// 予測ロジック
-function calcScore(user, template) {
-    if (user.length > template.length) return 0;
-    let score = 0;
-    for (let i = 0; i < user.length; i++) {
-        const us = user[i], ts = template[i].map(p => ({ x: (p.x / 320) * canvasSize, y: (p.y / 320) * canvasSize }));
-        if (us.length < 2 || ts.length < 2) continue;
-        let ss = 0;
-        const maxD = Math.sqrt(canvasSize * canvasSize * 2);
-        ss += Math.max(0, 1 - dist(us[0].x, us[0].y, ts[0].x, ts[0].y) / (maxD * 0.5)) * 25;
-        ss += Math.max(0, 1 - dist(us[us.length - 1].x, us[us.length - 1].y, ts[ts.length - 1].x, ts[ts.length - 1].y) / (maxD * 0.5)) * 20;
-        const uDir = Math.atan2(us[us.length - 1].y - us[0].y, us[us.length - 1].x - us[0].x) * 180 / Math.PI;
-        const tDir = Math.atan2(ts[ts.length - 1].y - ts[0].y, ts[ts.length - 1].x - ts[0].x) * 180 / Math.PI;
-        let aD = Math.abs(uDir - tDir); if (aD > 180) aD = 360 - aD;
-        ss += (1 - aD / 180) * 15;
-        let uL = 0, tL = 0;
-        for (let j = 1; j < us.length; j++) uL += dist(us[j].x, us[j].y, us[j - 1].x, us[j - 1].y);
-        for (let j = 1; j < ts.length; j++) tL += dist(ts[j].x, ts[j].y, ts[j - 1].x, ts[j - 1].y);
-        if (uL && tL) ss += (Math.min(uL, tL) / Math.max(uL, tL)) * 10;
-        score += ss;
+// 予測ロジック（改善版）
+
+// ストローク間の距離を計算（Dynamic Time Warping簡易版）
+function strokeDistance(userStroke, templateStroke) {
+    const u = userStroke;
+    const t = templateStroke.map(p => ({
+        x: (p.x / 320) * canvasSize,
+        y: (p.y / 320) * canvasSize
+    }));
+
+    if (u.length < 2 || t.length < 2) return Infinity;
+
+    // ストロークを同じ点数にリサンプリング
+    const numPoints = 12;
+    const uResampled = resampleStroke(u, numPoints);
+    const tResampled = resampleStroke(t, numPoints);
+
+    // 点ごとの距離の平均
+    let totalDist = 0;
+    for (let i = 0; i < numPoints; i++) {
+        totalDist += dist(uResampled[i].x, uResampled[i].y, tResampled[i].x, tResampled[i].y);
     }
-    return Math.max(0, Math.min(100, user.length ? score / user.length : 0));
+
+    return totalDist / numPoints;
+}
+
+// ストロークを指定した点数にリサンプリング
+function resampleStroke(stroke, numPoints) {
+    if (stroke.length < 2) return stroke;
+
+    // 総距離を計算
+    let totalLength = 0;
+    for (let i = 1; i < stroke.length; i++) {
+        totalLength += dist(stroke[i].x, stroke[i].y, stroke[i-1].x, stroke[i-1].y);
+    }
+
+    if (totalLength === 0) return Array(numPoints).fill(stroke[0]);
+
+    const interval = totalLength / (numPoints - 1);
+    const resampled = [{ ...stroke[0] }];
+    let accDist = 0;
+    let j = 1;
+
+    for (let i = 1; i < numPoints - 1; i++) {
+        const targetDist = i * interval;
+
+        while (j < stroke.length) {
+            const segDist = dist(stroke[j].x, stroke[j].y, stroke[j-1].x, stroke[j-1].y);
+
+            if (accDist + segDist >= targetDist) {
+                const ratio = (targetDist - accDist) / segDist;
+                resampled.push({
+                    x: stroke[j-1].x + ratio * (stroke[j].x - stroke[j-1].x),
+                    y: stroke[j-1].y + ratio * (stroke[j].y - stroke[j-1].y)
+                });
+                break;
+            }
+            accDist += segDist;
+            j++;
+        }
+
+        if (resampled.length <= i) {
+            resampled.push({ ...stroke[stroke.length - 1] });
+        }
+    }
+
+    resampled.push({ ...stroke[stroke.length - 1] });
+    return resampled;
+}
+
+// 方向の類似度（-1 to 1）
+function directionSimilarity(userStroke, templateStroke) {
+    const u = userStroke;
+    const t = templateStroke.map(p => ({
+        x: (p.x / 320) * canvasSize,
+        y: (p.y / 320) * canvasSize
+    }));
+
+    if (u.length < 2 || t.length < 2) return 0;
+
+    const uDir = Math.atan2(u[u.length-1].y - u[0].y, u[u.length-1].x - u[0].x);
+    const tDir = Math.atan2(t[t.length-1].y - t[0].y, t[t.length-1].x - t[0].x);
+
+    // cos類似度
+    return Math.cos(uDir - tDir);
+}
+
+// メインスコア計算
+function calcScore(user, template) {
+    const userLen = user.length;
+    const templateLen = template.length;
+
+    // ストロークがない場合
+    if (userLen === 0) return 0;
+
+    // ユーザーのストローク数がテンプレートより多い場合は0
+    if (userLen > templateLen) return 0;
+
+    let totalScore = 0;
+    const maxDistForNormalization = canvasSize * 0.4; // 正規化用の最大距離
+
+    // 各ストロークのマッチング
+    for (let i = 0; i < userLen; i++) {
+        const userStroke = user[i];
+        const templateStroke = template[i];
+
+        // 形状の距離（0に近いほど良い）
+        const shapeDist = strokeDistance(userStroke, templateStroke);
+        const shapeScore = Math.max(0, 1 - shapeDist / maxDistForNormalization);
+
+        // 方向の類似度（-1 to 1 → 0 to 1）
+        const dirScore = (directionSimilarity(userStroke, templateStroke) + 1) / 2;
+
+        // 始点の位置マッチング
+        const uStart = userStroke[0];
+        const tStart = {
+            x: (templateStroke[0].x / 320) * canvasSize,
+            y: (templateStroke[0].y / 320) * canvasSize
+        };
+        const startDist = dist(uStart.x, uStart.y, tStart.x, tStart.y);
+        const startScore = Math.max(0, 1 - startDist / (canvasSize * 0.3));
+
+        // ストロークスコア（重み付け）
+        const strokeScore = (
+            shapeScore * 50 +    // 形状: 50点
+            dirScore * 25 +      // 方向: 25点
+            startScore * 25      // 始点: 25点
+        );
+
+        totalScore += strokeScore;
+    }
+
+    // 平均スコア
+    let avgScore = totalScore / userLen;
+
+    // ストローク数ボーナス/ペナルティ
+    // 残りストローク数が少ないほどボーナス
+    const remainingRatio = (templateLen - userLen) / templateLen;
+    const strokeCountBonus = 1 + (1 - remainingRatio) * 0.1; // 最大10%ボーナス
+
+    avgScore *= strokeCountBonus;
+
+    return Math.max(0, Math.min(100, avgScore));
 }
 
 function updatePredictions() {
     document.getElementById('stroke-count').textContent = userStrokes.length;
+
     if (!userStrokes.length) {
         predictions = [];
         renderUI([]);
         return;
     }
+
     const cands = [];
     for (let [char, data] of Object.entries(hiraganaData)) {
         const score = calcScore(userStrokes, data.strokes);
-        cands.push({ char, score, strokes: data.strokes });
+        if (score > 0) {
+            cands.push({ char, score, strokes: data.strokes });
+        }
     }
+
+    // スコアでソート
     cands.sort((a, b) => b.score - a.score);
+
     predictions = cands;
-    renderUI(cands.filter(c => c.score > 0).slice(0, 10));
+    renderUI(cands.slice(0, 10));
 }

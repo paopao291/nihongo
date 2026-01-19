@@ -31,7 +31,7 @@ function draw() {
     clear(); // 背景を透明にしてCSSのグリッド線を表示
     drawHints();
     stroke(28, 25, 23); // --text-primary: #1c1917
-    strokeWeight(2.5);
+    strokeWeight(10);
     noFill();
     userStrokes.forEach(s => { beginShape(); s.forEach(p => vertex(p.x, p.y)); endShape(); });
     if (currentStroke.length > 0) {
@@ -46,7 +46,6 @@ function drawHints() {
     // 順位に応じたopacity（1位が最も濃い）
     const ALPHAS = [90, 60, 30, 10, 5];
     const MARKER_SIZES = [10, 8, 7, 6, 5];
-    // すべての予測で同じ太さを使用（ユーザーのストロークより細く）
     const STROKE_WEIGHT = 10;
 
     predictions.slice(0, 5).forEach((pred, i) => {
