@@ -57,6 +57,15 @@ hiragana/
 
 このデータは、ひらがな文字の各ストロークの座標情報を含んでおり、手書き入力の予測に使用されています。
 
+### Tomoeライセンス
+
+このプロジェクトは、Tomoeプロジェクトのデータを使用しています。Tomoeは以下のライセンスの下で公開されています：
+
+- **ライセンス**: GNU Lesser General Public License version 2.0 (LGPL-2.0) またはそれ以降のバージョン
+- **著作権**: Copyright (C) Kouhei Sutou <kou@cozmixng.org> およびその他の貢献者
+
+Tomoeのライセンス要件に従い、このプロジェクトはTomoeデータを使用していることを明示します。詳細については、[Tomoeプロジェクトページ](https://sourceforge.net/projects/tomoe/)を参照してください。
+
 ## GitHub Pagesでの公開方法
 
 1. このリポジトリをGitHubにプッシュします
@@ -84,3 +93,5 @@ hiragana/
 ## ライセンス
 
 このプロジェクトはMITライセンスの下で公開されています。
+
+ただし、このプロジェクトで使用されているTomoeデータは、GNU Lesser General Public License version 2.0 (LGPL-2.0) の下で公開されています。Tomoeデータを使用する際は、LGPL-2.0の要件に従う必要があります。
