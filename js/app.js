@@ -7,10 +7,10 @@ let canvasSize = 320;
 
 // アニメーション関連
 let animationProgress = 0; // 0-1の進行度
-let animationSpeed = 0.15; // アニメーション速度
+let animationStartTime = 0; // アニメーション開始時刻（時間ベースのアニメーション用）
+let animationDuration = 2000; // アニメーション1サイクルの時間（ミリ秒）
 let animationTarget = null; // 現在アニメーション中のストロークデータ
 let shouldResetAnimation = false; // アニメーションリセットフラグ
-let animationFrameId = null; // アニメーションフレームID（フォールバック用）
 
 // CSS変数と一致した予測カラー
 const COLORS = [

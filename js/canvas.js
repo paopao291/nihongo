@@ -60,12 +60,14 @@ function updateAnimation() {
         animationProgress = 0;
         animationTarget = null;
         shouldResetAnimation = false;
+        animationStartTime = 0;
         return;
     }
     
     // 予測が更新された場合、アニメーションをリセット
     if (shouldResetAnimation) {
         animationProgress = 0;
+        animationStartTime = typeof millis === 'function' ? millis() : Date.now();
         shouldResetAnimation = false;
     }
     
@@ -89,16 +91,20 @@ function updateAnimation() {
             index: animationCandidateIndex
         };
         
-        // アニメーション進行
+        // 時間ベースのアニメーション（フレームレートに依存しない）
         if (animationTarget.stroke && animationTarget.stroke.length > 1) {
-            animationProgress += animationSpeed;
-            if (animationProgress > 1) {
-                animationProgress = 0; // ループ
+            const currentTime = typeof millis === 'function' ? millis() : Date.now();
+            if (animationStartTime === 0) {
+                animationStartTime = currentTime;
             }
+            
+            const elapsed = currentTime - animationStartTime;
+            animationProgress = (elapsed % animationDuration) / animationDuration;
         }
     } else {
         animationTarget = null;
         animationProgress = 0;
+        animationStartTime = 0;
     }
 }
 
