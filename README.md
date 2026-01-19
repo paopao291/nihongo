@@ -32,7 +32,7 @@ hiragana/
 │   └── styles.css      # スタイルシート
 ├── js/
 │   ├── app.js          # グローバル変数と設定
-│   ├── data.js         # ひらがなストロークデータ（tomoe_dataのall.tdicを使用）
+│   ├── data.js         # ひらがなストロークデータ（tomoe_dataのhiragana.tdicを使用）
 │   ├── prediction.js   # 予測ロジック
 │   ├── ui.js           # UI更新処理
 │   └── canvas.js       # p5.jsキャンバス処理
@@ -50,10 +50,10 @@ hiragana/
 
 ## データソース
 
-このプロジェクトでは、ひらがなのストロークデータとして [tomoe_data](https://github.com/hiroyuki-komatsu/tomoe_data) の `all.tdic` ファイルを使用しています。
+このプロジェクトでは、ひらがなのストロークデータとして [tomoe_data](https://github.com/hiroyuki-komatsu/tomoe_data) の `hiragana.tdic` ファイルを使用しています。
 
 - **データソース**: [hiroyuki-komatsu/tomoe_data](https://github.com/hiroyuki-komatsu/tomoe_data)
-- **使用ファイル**: [all.tdic](https://raw.githubusercontent.com/hiroyuki-komatsu/tomoe_data/main/all.tdic)
+- **使用ファイル**: [hiragana.tdic](https://raw.githubusercontent.com/hiroyuki-komatsu/tomoe_data/main/hiragana.tdic)
 
 このデータは、ひらがな文字の各ストロークの座標情報を含んでおり、手書き入力の予測に使用されています。
 
