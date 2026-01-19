@@ -29,6 +29,10 @@ function updateCanvasSize() {
 
 function draw() {
     clear(); // 背景を透明にしてCSSのグリッド線を表示
+    
+    // アニメーションを更新
+    updateAnimation();
+    
     drawHints();
     stroke(28, 25, 23); // --text-primary: #1c1917
     strokeWeight(10);
@@ -38,6 +42,54 @@ function draw() {
         beginShape();
         currentStroke.forEach(p => vertex(p.x, p.y));
         endShape();
+    }
+}
+
+function updateAnimation() {
+    const idx = userStrokes.length;
+    if (!predictions.length) {
+        animationProgress = 0;
+        animationTarget = null;
+        shouldResetAnimation = false;
+        return;
+    }
+    
+    // 予測が更新された場合、アニメーションをリセット
+    if (shouldResetAnimation) {
+        animationProgress = 0;
+        shouldResetAnimation = false;
+    }
+    
+    // 完成していない候補（次のストロークが残っている候補）の中で1位のものを探す
+    let animationCandidate = null;
+    let animationCandidateIndex = -1;
+    
+    for (let i = 0; i < predictions.length; i++) {
+        const pred = predictions[i];
+        // ストローク数が一致していない（完成していない）かつ、次のストロークが存在する
+        if (idx < pred.strokes.length && pred.strokes[idx]) {
+            animationCandidate = pred;
+            animationCandidateIndex = i;
+            break;
+        }
+    }
+    
+    if (animationCandidate && animationCandidateIndex >= 0) {
+        animationTarget = {
+            stroke: animationCandidate.strokes[idx],
+            index: animationCandidateIndex
+        };
+        
+        // アニメーション進行
+        if (animationTarget.stroke && animationTarget.stroke.length > 1) {
+            animationProgress += animationSpeed;
+            if (animationProgress > 1) {
+                animationProgress = 0; // ループ
+            }
+        }
+    } else {
+        animationTarget = null;
+        animationProgress = 0;
     }
 }
 
@@ -55,25 +107,94 @@ function drawHints() {
             const col = COLORS[i];
             const alpha = ALPHAS[i];
 
-            // ストローク全体を滑らかに描画
-            stroke(col[0], col[1], col[2], alpha);
-            strokeWeight(STROKE_WEIGHT);
-            noFill();
-            beginShape();
-            next.forEach((p, j) => {
-                const sc = scale320(p);
-                if (j === 0 || j === next.length - 1) vertex(sc.x, sc.y);
-                curveVertex(sc.x, sc.y);
-            });
-            endShape();
-            
-            // 始点マーカー
-            const st = scale320(next[0]);
-            fill(col[0], col[1], col[2], alpha);
-            noStroke();
-            ellipse(st.x, st.y, MARKER_SIZES[i], MARKER_SIZES[i]);
+            // アニメーション対象かチェック（完成していない候補の中で1位）
+            const isAnimationTarget = animationTarget && 
+                                      animationTarget.index === i && 
+                                      animationTarget.stroke === next;
+
+            if (isAnimationTarget) {
+                // アニメーションでなぞる
+                drawAnimatedStroke(next, col, alpha, STROKE_WEIGHT, MARKER_SIZES[i], animationProgress, i);
+            } else {
+                // その他の候補は通常通り全体を表示
+                stroke(col[0], col[1], col[2], alpha);
+                strokeWeight(STROKE_WEIGHT);
+                noFill();
+                beginShape();
+                next.forEach((p, j) => {
+                    const sc = scale320(p);
+                    if (j === 0 || j === next.length - 1) vertex(sc.x, sc.y);
+                    curveVertex(sc.x, sc.y);
+                });
+                endShape();
+                
+                // 始点マーカー
+                const st = scale320(next[0]);
+                fill(col[0], col[1], col[2], alpha);
+                noStroke();
+                ellipse(st.x, st.y, MARKER_SIZES[i], MARKER_SIZES[i]);
+            }
         }
     });
+}
+
+function drawAnimatedStroke(strokePoints, color, alpha, weight, markerSize, progress, rankIndex) {
+    if (!strokePoints || strokePoints.length < 2) return;
+    
+    // アニメーション進行度に応じて描画する点の数を計算
+    const totalLength = strokePoints.length;
+    const drawToIndex = Math.floor(progress * totalLength);
+    
+    // 始点マーカー（常に表示）
+    const st = scale320(strokePoints[0]);
+    fill(color[0], color[1], color[2], alpha);
+    noStroke();
+    ellipse(st.x, st.y, markerSize, markerSize);
+    
+    // アニメーション中のストローク部分
+    if (drawToIndex > 0) {
+        stroke(color[0], color[1], color[2], alpha);
+        strokeWeight(weight);
+        noFill();
+        
+        beginShape();
+        for (let j = 0; j <= drawToIndex; j++) {
+            const sc = scale320(strokePoints[j]);
+            if (j === 0 || j === drawToIndex) {
+                vertex(sc.x, sc.y);
+            }
+            if (j > 0 && j < drawToIndex) {
+                curveVertex(sc.x, sc.y);
+            }
+        }
+        endShape();
+        
+        // 現在描画中の位置にマーカー（アニメーションカーソル）
+        if (drawToIndex < totalLength) {
+            const current = scale320(strokePoints[drawToIndex]);
+            fill(color[0], color[1], color[2], Math.min(alpha + 50, 255));
+            noStroke();
+            ellipse(current.x, current.y, markerSize * 1.2, markerSize * 1.2);
+        }
+    }
+    
+    // 未描画部分を薄く表示（ガイドライン）
+    if (drawToIndex < totalLength - 1) {
+        stroke(color[0], color[1], color[2], alpha * 0.3);
+        strokeWeight(weight * 0.5);
+        noFill();
+        beginShape();
+        for (let j = drawToIndex; j < totalLength; j++) {
+            const sc = scale320(strokePoints[j]);
+            if (j === drawToIndex || j === totalLength - 1) {
+                vertex(sc.x, sc.y);
+            }
+            if (j > drawToIndex && j < totalLength - 1) {
+                curveVertex(sc.x, sc.y);
+            }
+        }
+        endShape();
+    }
 }
 
 function scale320(p) {

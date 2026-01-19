@@ -5,6 +5,12 @@ let predictions = [];
 let isDrawing = false;
 let canvasSize = 320;
 
+// アニメーション関連
+let animationProgress = 0; // 0-1の進行度
+let animationSpeed = 0.015; // アニメーション速度
+let animationTarget = null; // 現在アニメーション中のストロークデータ
+let shouldResetAnimation = false; // アニメーションリセットフラグ
+
 // CSS変数と一致した予測カラー
 const COLORS = [
     [99, 102, 241],   // --pred-1: #6366f1 (indigo)

@@ -985,4 +985,7 @@ function updatePredictions() {
 
     predictions = cands;
     renderUI(cands.slice(0, 10));
+    
+    // アニメーションをリセット
+    shouldResetAnimation = true;
 }
