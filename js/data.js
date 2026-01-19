@@ -1,3 +1,6 @@
+// ひらがなストロークデータ
+// データソース: https://github.com/hiroyuki-komatsu/tomoe_data
+// 使用ファイル: https://raw.githubusercontent.com/hiroyuki-komatsu/tomoe_data/main/all.tdic
 const TOMOE_DATA = `あ
 :3
 2 (54 58) (249 68)
