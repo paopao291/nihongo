@@ -1,6 +1,6 @@
 // 予測ロジック（改善版）
 
-// 真のDTW（Dynamic Time Warping）実装（ウィンドウ制限付きで高速化）
+// 真のDTW（Dynamic Time Warping）実装（ウィンドウ制限付きで高速化、改善版）
 function dtwDistance(stroke1, stroke2, windowSize = 5) {
     const n = stroke1.length;
     const m = stroke2.length;
@@ -11,7 +11,8 @@ function dtwDistance(stroke1, stroke2, windowSize = 5) {
     }
 
     // ウィンドウ制限を適用（計算量を削減）
-    const w = Math.max(windowSize, Math.abs(n - m));
+    // より適応的なウィンドウサイズ
+    const w = Math.max(windowSize, Math.ceil(Math.abs(n - m) * 1.5));
 
     // DPテーブル（必要な部分のみ保持）
     const dtw = Array(n + 1).fill(null).map(() => Array(m + 1).fill(Infinity));
@@ -27,11 +28,11 @@ function dtwDistance(stroke1, stroke2, windowSize = 5) {
                 stroke2[j - 1].x, stroke2[j - 1].y
             );
             
-            // 最小コストパスを選択
+            // 最小コストパスを選択（対角線を優先）
             dtw[i][j] = cost + Math.min(
-                dtw[i - 1][j],      // 挿入
-                dtw[i][j - 1],      // 削除
-                dtw[i - 1][j - 1]   // 一致
+                dtw[i - 1][j] * 1.1,      // 挿入（少しペナルティ）
+                dtw[i][j - 1] * 1.1,      // 削除（少しペナルティ）
+                dtw[i - 1][j - 1]         // 一致（優先）
             );
         }
     }
@@ -48,7 +49,10 @@ function dtwDistance(stroke1, stroke2, windowSize = 5) {
     }
     const avgLength = (stroke1Length + stroke2Length) / 2;
     // 平均長さで正規化（長いストロークほど許容範囲が広い）
-    return avgLength > 0 ? dtw[n][m] / avgLength : dtw[n][m] / (n + m);
+    // さらに、点数の違いも考慮
+    const lengthNormalized = avgLength > 0 ? dtw[n][m] / avgLength : dtw[n][m] / (n + m);
+    const pointNormalized = lengthNormalized / Math.max(n, m);
+    return pointNormalized;
 }
 
 // ストローク間の距離を計算（DTW実装版）
@@ -479,6 +483,78 @@ function bulgeSimilarity(userStroke, templateStroke) {
     return (midScore * 0.25 + threeQuarterScore * 0.4 + centerScore * 0.2 + aspectScore * 0.15);
 }
 
+// シンプルな一致度計算（重み付けなし、基本的な指標のみ）
+function calcScoreSimple(user, template) {
+    const userLen = user.length;
+    const templateLen = template.length;
+
+    if (userLen === 0) return 0;
+    if (userLen > templateLen) return 0;
+
+    let totalScore = 0;
+
+    for (let i = 0; i < userLen; i++) {
+        const userStroke = user[i];
+        const templateStroke = template[i];
+        
+        // スケール調整
+        const u = userStroke;
+        const t = templateStroke.map(p => ({
+            x: (p.x / 320) * canvasSize,
+            y: (p.y / 320) * canvasSize
+        }));
+
+        if (u.length < 2 || t.length < 2) continue;
+
+        // 1. 形状距離（DTW）
+        const shapeDist = strokeDistance(userStroke, templateStroke);
+        const shapeScore = Math.max(0, 1 - shapeDist / (canvasSize * 0.3));
+
+        // 2. 始点位置
+        const uStart = u[0];
+        const tStart = t[0];
+        const startDist = dist(uStart.x, uStart.y, tStart.x, tStart.y);
+        const startScore = Math.max(0, 1 - startDist / (canvasSize * 0.3));
+
+        // 3. 終点位置
+        const uEnd = u[u.length - 1];
+        const tEnd = t[t.length - 1];
+        const endDist = dist(uEnd.x, uEnd.y, tEnd.x, tEnd.y);
+        const endScore = Math.max(0, 1 - endDist / (canvasSize * 0.3));
+
+        // 4. 方向
+        const uDir = Math.atan2(uEnd.y - uStart.y, uEnd.x - uStart.x);
+        const tDir = Math.atan2(tEnd.y - tStart.y, tEnd.x - tStart.x);
+        const dirScore = (Math.cos(uDir - tDir) + 1) / 2;
+
+        // 5. 長さ比
+        let uLength = 0;
+        for (let j = 1; j < u.length; j++) {
+            uLength += dist(u[j].x, u[j].y, u[j-1].x, u[j-1].y);
+        }
+        let tLength = 0;
+        for (let j = 1; j < t.length; j++) {
+            tLength += dist(t[j].x, t[j].y, t[j-1].x, t[j-1].y);
+        }
+        const lengthRatio = tLength > 0 ? uLength / tLength : 1;
+        const lengthScore = Math.max(0, 1 - Math.abs(lengthRatio - 1) / 0.5);
+
+        // 各指標を等しく評価（平均）
+        const strokeScore = (shapeScore + startScore + endScore + dirScore + lengthScore) / 5;
+        totalScore += strokeScore;
+    }
+
+    // 平均スコア
+    let avgScore = (totalScore / userLen) * 100;
+
+    // ストローク数が一致している場合はボーナス
+    if (userLen === templateLen && userLen >= 2) {
+        avgScore *= 1.15;
+    }
+
+    return Math.max(0, Math.min(100, avgScore));
+}
+
 // メインスコア計算
 function calcScore(user, template) {
     const userLen = user.length;
@@ -533,15 +609,17 @@ function calcScore(user, template) {
         // 1ストローク目はより緩和（情報が少ないので）
         let normalizationDist;
         if (isFirstStroke && userLen === 1) {
-            normalizationDist = maxDistForNormalization * 2.0; // 1ストローク目は大幅に緩和
+            normalizationDist = maxDistForNormalization * 2.5; // 1ストローク目は大幅に緩和
         } else if (isShortStroke) {
-            normalizationDist = maxDistForNormalization * 1.5;
+            normalizationDist = maxDistForNormalization * 1.8;
         } else if (isComplexStroke) {
-            normalizationDist = maxDistForNormalization * 0.7;
+            normalizationDist = maxDistForNormalization * 0.6; // 複雑なストロークはより厳しく
         } else {
             normalizationDist = maxDistForNormalization;
         }
-        const shapeScore = Math.max(0, 1 - shapeDist / normalizationDist);
+        // 形状スコアの計算を改善（より滑らかな減衰）
+        const normalizedDist = shapeDist / normalizationDist;
+        const shapeScore = Math.max(0, 1 / (1 + normalizedDist * 2)); // より滑らかな減衰曲線
 
         // 方向の類似度（-1 to 1 → 0 to 1）
         // 複雑なストロークや輪を描くストロークでは複数セグメント評価を使用
@@ -557,13 +635,25 @@ function calcScore(user, template) {
 
         // 始点の位置マッチング
         const startDist = dist(uStart.x, uStart.y, tStart.x, tStart.y);
-        const startScore = Math.max(0, 1 - startDist / (canvasSize * 0.3));
+        // 1ストローク目では位置をより厳密に評価（許容範囲を広げるが、評価は重要）
+        const startDistThreshold = (isFirstStroke && userLen === 1) 
+            ? (canvasSize * 0.4)  // 1ストローク目は許容範囲を広げる
+            : (canvasSize * 0.3);
+        const startScore = Math.max(0, 1 - startDist / startDistThreshold);
 
         // 終点の位置マッチング（短いストロークや最初のストロークでは重要）
         const endDist = dist(uEnd.x, uEnd.y, tEnd.x, tEnd.y);
         // 最後のストロークの場合はより厳密に評価
         const isLastStroke = (i === userLen - 1) && (userLen === templateLen);
-        const endDistThreshold = isLastStroke ? (canvasSize * 0.2) : (canvasSize * 0.3);
+        // 1ストローク目では位置をより厳密に評価（許容範囲を広げるが、評価は重要）
+        let endDistThreshold;
+        if (isLastStroke) {
+            endDistThreshold = canvasSize * 0.2;
+        } else if (isFirstStroke && userLen === 1) {
+            endDistThreshold = canvasSize * 0.4; // 1ストローク目は許容範囲を広げる
+        } else {
+            endDistThreshold = canvasSize * 0.3;
+        }
         const endScore = Math.max(0, 1 - endDist / endDistThreshold);
 
         // 膨らみ方・方向性の類似度（複雑なストロークや輪を描くストロークでは重要）
@@ -583,32 +673,32 @@ function calcScore(user, template) {
         if (isComplexStroke && !isFirstStroke) {
             // 複雑なストローク（2ストローク目以降）は形状を重視
             // 特に輪を描くストロークでは膨らみ方と曲率も重視
-            const bulgeWeight = (userIsLoop || templateIsLoop) ? 9 : 5;
-            const curvatureWeight = (userIsLoop || templateIsLoop) ? 9 : 5;
+            const bulgeWeight = (userIsLoop || templateIsLoop) ? 10 : 5;
+            const curvatureWeight = (userIsLoop || templateIsLoop) ? 10 : 5;
             strokeScore = (
-                shapeScore * 40 +          // 形状: 40点
-                dirScore * 10 +            // 方向: 10点（複数セグメント評価）
-                curvatureScore * curvatureWeight +  // 曲率: 5-9点
-                startScore * 6 +           // 始点: 6点
-                endScore * 4 +             // 終点: 4点
-                closureScore * 5 +         // 結び: 5点
+                shapeScore * 40 +          // 形状: 40点（最重要）
+                dirScore * 8 +             // 方向: 8点（複数セグメント評価）
+                curvatureScore * curvatureWeight +  // 曲率: 5-10点（輪を描く場合は重要）
+                startScore * 10 +          // 始点: 10点（位置を重視）
+                endScore * 8 +             // 終点: 8点（位置を重視）
+                closureScore * 4 +         // 結び: 4点
                 loopMatch * 2 +            // 輪の一致: 2点
-                bulgeScore * bulgeWeight + // 膨らみ方: 5-9点
-                lengthRatioScore * 4 +     // 長さ比: 4点（新規）
-                relationshipScore * 5      // ストローク間関係: 5点（新規）
+                bulgeScore * bulgeWeight + // 膨らみ方: 5-10点（輪を描く場合は重要）
+                lengthRatioScore * 3 +     // 長さ比: 3点
+                relationshipScore * 3      // ストローク間関係: 3点
             );
         } else if (isShortStroke || isFirstStroke) {
             // 短いストロークや最初のストローク
             if (isFirstStroke && userLen === 1) {
-                // 1ストローク目のみ（最初のストローク）: 形状・長さ・方向を重視
+                // 1ストローク目のみ（最初のストローク）: 位置・長さ・方向を重視
                 strokeScore = (
-                    shapeScore * 25 +        // 形状: 25点（正規化を緩和したので）
-                    dirScore * 30 +          // 方向: 30点（最重要：水平か下向きか）
-                    startScore * 10 +        // 始点: 10点（位置の重要度を下げる）
-                    endScore * 8 +           // 終点: 8点
-                    closureScore * 2 +       // 結び: 2点
-                    loopMatch * 2 +          // 輪の一致: 2点
-                    lengthRatioScore * 20 +  // 長さ比: 20点（最重要：「お」は長い）
+                    shapeScore * 15 +        // 形状: 15点
+                    dirScore * 25 +          // 方向: 25点（重要：水平か下向きか）
+                    startScore * 20 +        // 始点: 20点（位置を重視）
+                    endScore * 18 +          // 終点: 18点（位置を重視）
+                    closureScore * 1 +       // 結び: 1点
+                    loopMatch * 1 +          // 輪の一致: 1点
+                    lengthRatioScore * 18 + // 長さ比: 18点（重要：「お」は長い）
                     relationshipScore * 0     // ストローク間関係: 0点（最初なのでなし）
                 );
             } else {
@@ -633,15 +723,15 @@ function calcScore(user, template) {
             // 通常のストロークでも曲率を評価（重みは低め）
             const curvatureWeight = 4;
             strokeScore = (
-                shapeScore * 35 +          // 形状: 35点
-                dirScore * 18 +            // 方向: 18点
+                shapeScore * 30 +          // 形状: 30点
+                dirScore * 15 +            // 方向: 15点
                 curvatureScore * curvatureWeight +  // 曲率: 4点
-                startScore * 10 +          // 始点: 10点
-                endScore * 6 +             // 終点: 6点
+                startScore * 15 +          // 始点: 15点（位置を重視）
+                endScore * 12 +            // 終点: 12点（位置を重視）
                 closureScore * 8 +         // 結び: 8点
                 loopMatch * 2 +            // 輪の一致: 2点
-                lengthRatioScore * 4 +     // 長さ比: 4点（新規）
-                relationshipScore * 3      // ストローク間関係: 3点（新規）
+                lengthRatioScore * 5 +     // 長さ比: 5点
+                relationshipScore * 3      // ストローク間関係: 3点
             );
         }
 
@@ -846,12 +936,17 @@ function updatePredictions() {
 
     const cands = [];
     const DEBUG = false; // デバッグモード（コンソールに詳細を表示）
+    
+    // シンプルモードと通常モードを切り替え可能
+    const USE_SIMPLE_MODE = true; // true にするとシンプルな一致度測定を使用
 
     // 1ストローク目では閾値を下げてより多くの候補を表示
     const scoreThreshold = userStrokes.length === 1 ? 20 : 30;
 
     for (let [char, data] of Object.entries(hiraganaData)) {
-        const score = calcScore(userStrokes, data.strokes);
+        const score = USE_SIMPLE_MODE 
+            ? calcScoreSimple(userStrokes, data.strokes)
+            : calcScore(userStrokes, data.strokes);
         if (score > scoreThreshold) {
             cands.push({ char, score, strokes: data.strokes });
         }
