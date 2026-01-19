@@ -104,28 +104,58 @@ function calcScore(user, template) {
         const userStroke = user[i];
         const templateStroke = template[i];
 
+        // ストロークの長さを判定（短いストロークかどうか）
+        const uStart = userStroke[0];
+        const uEnd = userStroke[userStroke.length - 1];
+        const tStart = {
+            x: (templateStroke[0].x / 320) * canvasSize,
+            y: (templateStroke[0].y / 320) * canvasSize
+        };
+        const tEnd = {
+            x: (templateStroke[templateStroke.length - 1].x / 320) * canvasSize,
+            y: (templateStroke[templateStroke.length - 1].y / 320) * canvasSize
+        };
+        
+        const userStrokeLength = dist(uStart.x, uStart.y, uEnd.x, uEnd.y);
+        const templateStrokeLength = dist(tStart.x, tStart.y, tEnd.x, tEnd.y);
+        const isShortStroke = userStroke.length <= 3 || userStrokeLength < canvasSize * 0.2;
+        const isFirstStroke = i === 0;
+
         // 形状の距離（0に近いほど良い）
         const shapeDist = strokeDistance(userStroke, templateStroke);
-        const shapeScore = Math.max(0, 1 - shapeDist / maxDistForNormalization);
+        // 短いストロークの場合は正規化を緩和
+        const normalizationDist = isShortStroke ? maxDistForNormalization * 1.5 : maxDistForNormalization;
+        const shapeScore = Math.max(0, 1 - shapeDist / normalizationDist);
 
         // 方向の類似度（-1 to 1 → 0 to 1）
         const dirScore = (directionSimilarity(userStroke, templateStroke) + 1) / 2;
 
         // 始点の位置マッチング
-        const uStart = userStroke[0];
-        const tStart = {
-            x: (templateStroke[0].x / 320) * canvasSize,
-            y: (templateStroke[0].y / 320) * canvasSize
-        };
         const startDist = dist(uStart.x, uStart.y, tStart.x, tStart.y);
         const startScore = Math.max(0, 1 - startDist / (canvasSize * 0.3));
 
+        // 終点の位置マッチング（短いストロークや最初のストロークでは重要）
+        const endDist = dist(uEnd.x, uEnd.y, tEnd.x, tEnd.y);
+        const endScore = Math.max(0, 1 - endDist / (canvasSize * 0.3));
+
         // ストロークスコア（重み付け）
-        const strokeScore = (
-            shapeScore * 50 +    // 形状: 50点
-            dirScore * 25 +      // 方向: 25点
-            startScore * 25      // 始点: 25点
-        );
+        // 短いストロークや最初のストロークでは位置マッチングを重視
+        let strokeScore;
+        if (isShortStroke || isFirstStroke) {
+            strokeScore = (
+                shapeScore * 30 +    // 形状: 30点（短いストロークでは形状より位置が重要）
+                dirScore * 20 +      // 方向: 20点
+                startScore * 30 +    // 始点: 30点（重要）
+                endScore * 20        // 終点: 20点（重要）
+            );
+        } else {
+            strokeScore = (
+                shapeScore * 50 +    // 形状: 50点
+                dirScore * 25 +      // 方向: 25点
+                startScore * 15 +    // 始点: 15点
+                endScore * 10        // 終点: 10点
+            );
+        }
 
         totalScore += strokeScore;
     }
