@@ -334,9 +334,11 @@ body {
     -webkit-touch-callout: default;
 }
 
-.btn:hover {
-    background: var(--bg-subtle);
-    color: var(--text-primary);
+@media (hover: hover) {
+    .btn:hover {
+        background: var(--bg-subtle);
+        color: var(--text-primary);
+    }
 }
 
 .btn:active {
