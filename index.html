@@ -1,0 +1,759 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>ひらがな予測補完</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.7.0/p5.min.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap"
+        rel="stylesheet">
+    <style>
+        :root {
+            --bg: #f8fafc;
+            --surface: #ffffff;
+            --border: rgba(15, 23, 42, 0.08);
+            --text-primary: #0f172a;
+            --text-muted: #94a3b8;
+
+            --pred-1: #6366f1;
+            --pred-2: #10b981;
+            --pred-3: #f59e0b;
+            --pred-4: #ec4899;
+            --pred-5: #06b6d4;
+
+            --font-sans: 'Inter', -apple-system, sans-serif;
+            --font-mono: 'JetBrains Mono', monospace;
+            --font-jp: 'Hiragino Sans', 'Yu Gothic', sans-serif;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        html,
+        body {
+            height: 100%;
+            overflow: hidden;
+            touch-action: none;
+        }
+
+        body {
+            font-family: var(--font-sans);
+            background: var(--bg);
+            color: var(--text-primary);
+            display: flex;
+            flex-direction: column;
+            height: 100dvh;
+            padding: 12px;
+            gap: 12px;
+        }
+
+        /* Header - Minimal */
+        .header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-shrink: 0;
+        }
+
+        .title {
+            font-size: 15px;
+            font-weight: 600;
+            letter-spacing: -0.01em;
+        }
+
+        .stroke-badge {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 10px;
+            background: var(--surface);
+            border: 0.5px solid var(--border);
+            border-radius: 6px;
+            font-size: 12px;
+            color: var(--text-muted);
+        }
+
+        .stroke-badge-value {
+            font-family: var(--font-mono);
+            font-weight: 500;
+            color: var(--text-primary);
+        }
+
+        /* Canvas Container - Flex grow to fill space */
+        .canvas-container {
+            flex: 1;
+            position: relative;
+            min-height: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .canvas-wrapper {
+            position: relative;
+            background: var(--surface);
+            border: 0.5px solid var(--border);
+            border-radius: 12px;
+            overflow: hidden;
+            touch-action: none;
+            max-width: 100%;
+            max-height: 100%;
+            aspect-ratio: 1;
+        }
+
+        #defaultCanvas0 {
+            display: block;
+            width: 100% !important;
+            height: 100% !important;
+        }
+
+        /* Floating Predictions - Top Right of Canvas */
+        .predictions-float {
+            position: absolute;
+            top: 8px;
+            right: 8px;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            pointer-events: none;
+        }
+
+        .pred-item {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 8px;
+            background: rgba(255, 255, 255, 0.92);
+            backdrop-filter: blur(8px);
+            border-radius: 6px;
+            font-size: 12px;
+        }
+
+        .pred-rank {
+            width: 16px;
+            height: 16px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 4px;
+            font-size: 10px;
+            font-weight: 600;
+            color: white;
+        }
+
+        .pred-rank[data-r="1"] {
+            background: var(--pred-1);
+        }
+
+        .pred-rank[data-r="2"] {
+            background: var(--pred-2);
+        }
+
+        .pred-rank[data-r="3"] {
+            background: var(--pred-3);
+        }
+
+        .pred-rank[data-r="4"] {
+            background: var(--pred-4);
+        }
+
+        .pred-rank[data-r="5"] {
+            background: var(--pred-5);
+        }
+
+        .pred-char {
+            font-family: var(--font-jp);
+            font-size: 18px;
+            line-height: 1;
+        }
+
+        .pred-score {
+            font-family: var(--font-mono);
+            font-size: 10px;
+            color: var(--text-muted);
+        }
+
+        /* Floating Controls - Bottom of Canvas */
+        .controls-float {
+            position: absolute;
+            bottom: 8px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 6px;
+        }
+
+        .btn {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 4px;
+            padding: 6px 12px;
+            background: rgba(255, 255, 255, 0.92);
+            backdrop-filter: blur(8px);
+            border: 0.5px solid var(--border);
+            border-radius: 6px;
+            font-family: var(--font-sans);
+            font-size: 12px;
+            font-weight: 500;
+            color: var(--text-primary);
+            cursor: pointer;
+            transition: background 150ms;
+        }
+
+        .btn:active {
+            background: rgba(241, 245, 249, 0.95);
+        }
+
+        .btn-icon {
+            width: 14px;
+            height: 14px;
+            stroke-width: 1.5;
+        }
+
+        /* Empty hint on canvas */
+        .canvas-hint {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 13px;
+            color: var(--text-muted);
+            pointer-events: none;
+            text-align: center;
+            opacity: 0.7;
+        }
+    </style>
+</head>
+
+<body>
+    <header class="header">
+        <h1 class="title">ひらがな予測</h1>
+        <div class="stroke-badge">
+            <span>画数</span>
+            <span class="stroke-badge-value" id="stroke-count">0</span>
+        </div>
+    </header>
+
+    <div class="canvas-container">
+        <div class="canvas-wrapper" id="canvas-container">
+            <div class="predictions-float" id="predictions-float"></div>
+            <div class="canvas-hint" id="canvas-hint">キャンバスに文字を書いてください</div>
+            <div class="controls-float">
+                <button class="btn" onclick="undoStroke()">
+                    <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                        <path d="M3 10h10a5 5 0 0 1 5 5v2" stroke-linecap="round" stroke-linejoin="round" />
+                        <path d="M7 6L3 10l4 4" stroke-linecap="round" stroke-linejoin="round" />
+                    </svg>
+                    戻す
+                </button>
+                <button class="btn" onclick="clearCanvas()">
+                    <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                        <path d="M18 6L6 18M6 6l12 12" stroke-linecap="round" stroke-linejoin="round" />
+                    </svg>
+                    クリア
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const TOMOE_DATA = `あ
+:3
+2 (54 58) (249 68)
+3 (147 10) (145 201) (182 252)
+9 (224 103) (149 230) (82 240) (53 204) (86 149) (182 139) (240 172) (248 224) (228 250)
+
+い
+:2
+4 (56 63) (43 213) (67 259) (94 243)
+3 (213 61) (196 162) (238 238)
+
+う
+:2
+2 (118 45) (185 56)
+6 (62 105) (208 100) (51 263) (128 205) (188 268) (260 252)
+
+え
+:2
+2 (118 30) (178 43)
+6 (65 95) (213 108) (80 200) (135 255) (200 240) (238 268)
+
+お
+:3
+2 (64 94) (240 98)
+9 (148 35) (159 129) (140 199) (105 247) (64 228) (101 161) (192 161) (222 223) (189 257)
+2 (223 49) (253 89)
+
+か
+:3
+6 (50 103) (137 99) (177 139) (173 218) (139 256) (125 243)
+2 (152 37) (72 180)
+2 (216 79) (250 160)
+
+き
+:4
+2 (77 78) (205 80)
+2 (90 150) (221 158)
+2 (129 27) (154 187)
+3 (81 205) (104 247) (160 267)
+
+く
+:1
+3 (191 43) (70 168) (190 269)
+
+け
+:3
+3 (66 56) (46 251) (99 251)
+2 (153 109) (251 98)
+3 (218 27) (228 146) (179 251)
+
+こ
+:2
+4 (56 83) (188 67) (232 82) (225 108)
+3 (71 228) (131 251) (232 229)
+
+さ
+:3
+2 (67 89) (254 81)
+2 (147 37) (182 164)
+3 (88 167) (123 219) (178 244)
+
+し
+:1
+4 (80 36) (85 227) (183 262) (228 208)
+
+す
+:2
+2 (58 99) (234 92)
+8 (161 37) (175 128) (150 187) (128 193) (116 154) (147 137) (162 168) (123 265)
+
+せ
+:3
+2 (35 114) (255 97)
+2 (214 46) (195 147)
+5 (117 42) (88 102) (96 199) (133 225) (223 231)
+
+そ
+:1
+6 (88 45) (187 54) (46 144) (239 142) (64 260) (191 290)
+
+た
+:4
+2 (54 95) (135 84)
+3 (103 30) (90 151) (48 255)
+3 (144 151) (178 133) (225 146)
+2 (146 219) (228 232)
+
+ち
+:2
+2 (63 101) (219 75)
+6 (150 24) (101 174) (178 146) (211 215) (183 262) (121 262)
+
+つ
+:1
+5 (54 148) (153 101) (225 108) (236 165) (178 210)
+
+て
+:1
+5 (61 95) (226 76) (146 148) (148 225) (195 262)
+
+と
+:2
+2 (73 82) (118 135)
+5 (210 76) (103 146) (84 215) (118 260) (213 264)
+
+な
+:4
+2 (37 114) (157 88)
+2 (108 26) (37 181)
+2 (193 58) (256 136)
+7 (148 142) (146 243) (120 264) (82 253) (80 221) (108 215) (234 262)
+
+に
+:3
+3 (67 75) (65 251) (91 230)
+2 (155 106) (223 114)
+3 (159 219) (185 236) (243 225)
+
+ぬ
+:2
+3 (86 56) (97 153) (142 243)
+12 (183 71) (118 217) (84 241) (61 230) (78 153) (157 116) (211 146) (225 183) (213 223) (170 223) (191 193) (249 249)
+
+ね
+:2
+2 (75 26) (75 268)
+12 (39 91) (95 65) (59 243) (86 136) (178 78) (223 106) (215 193) (170 240) (129 223) (136 183) (174 176) (245 240)
+
+の
+:1
+7 (151 123) (118 255) (80 228) (97 121) (196 84) (245 165) (206 255)
+
+は
+:3
+2 (61 75) (63 251)
+2 (61 114) (168 100)
+7 (170 65) (170 210) (148 247) (121 232) (125 206) (161 204) (232 247)
+
+ひ
+:1
+7 (39 142) (121 88) (97 191) (131 268) (195 241) (225 120) (266 148)
+
+ふ
+:4
+2 (142 56) (193 88)
+4 (138 123) (196 178) (187 230) (150 260)
+2 (101 191) (60 251)
+2 (238 191) (281 251)
+
+へ
+:1
+3 (52 206) (114 103) (256 211)
+
+ほ
+:4
+3 (69 71) (69 232) (101 215)
+2 (157 84) (226 69)
+2 (144 142) (240 129)
+6 (193 88) (189 210) (174 228) (153 206) (176 180) (253 225)
+
+ま
+:3
+2 (91 78) (211 65)
+2 (88 129) (204 123)
+7 (146 24) (138 204) (103 241) (65 225) (73 200) (125 193) (202 228)
+
+み
+:2
+8 (65 90) (110 91) (129 140) (118 210) (71 230) (63 187) (99 161) (247 148)
+2 (196 76) (196 217)
+
+む
+:3
+2 (54 101) (135 84)
+9 (105 46) (101 159) (88 172) (73 146) (106 123) (112 228) (185 255) (236 241) (238 219)
+2 (219 97) (245 148)
+
+め
+:2
+3 (101 65) (120 187) (153 243)
+8 (181 56) (136 225) (99 243) (65 211) (75 166) (176 116) (240 151) (223 238)
+
+も
+:3
+2 (73 95) (217 88)
+2 (78 159) (226 148)
+5 (161 30) (136 159) (148 228) (215 264) (251 225)
+
+や
+:3
+4 (65 95) (125 91) (210 84) (238 121)
+2 (200 121) (130 200)
+2 (106 30) (163 247)
+
+ゆ
+:2
+8 (73 78) (69 236) (82 161) (125 101) (196 84) (240 121) (215 191) (131 200)
+3 (161 50) (181 159) (150 262)
+
+よ
+:2
+2 (159 91) (219 84)
+8 (144 39) (142 200) (120 249) (93 243) (84 206) (108 183) (191 200) (240 236)
+
+ら
+:2
+2 (135 24) (187 63)
+6 (131 78) (127 166) (191 166) (211 210) (163 255) (127 243)
+
+り
+:2
+3 (99 63) (95 166) (131 165)
+3 (202 56) (208 178) (168 273)
+
+る
+:1
+12 (99 58) (196 43) (76 191) (120 138) (174 127) (223 174) (217 219) (181 262) (129 236) (142 206) (170 204) (198 238)
+
+れ
+:2
+2 (97 45) (84 264)
+7 (65 110) (127 88) (52 243) (200 76) (181 204) (196 236) (251 230)
+
+ろ
+:1
+8 (91 69) (206 43) (69 178) (127 133) (196 142) (221 180) (217 228) (148 256)
+
+わ
+:2
+2 (88 39) (88 243)
+7 (61 97) (118 78) (60 225) (157 88) (240 84) (251 193) (191 225)
+
+を
+:3
+2 (80 90) (221 63)
+5 (150 30) (118 142) (150 135) (180 165) (170 228)
+5 (213 142) (142 166) (116 232) (144 273) (217 273)
+
+ん
+:1
+6 (196 37) (52 161) (135 255) (253 225) (220 280) (180 260)`;
+
+        function parseTomoeData(text) {
+            const lines = text.trim().split('\n');
+            const chars = {};
+            let i = 0;
+            while (i < lines.length) {
+                const line = lines[i].trim();
+                if (!line) { i++; continue; }
+                const char = line;
+                i++;
+                if (i >= lines.length || !lines[i].startsWith(':')) { i++; continue; }
+                const count = parseInt(lines[i].substring(1));
+                i++;
+                const strokes = [];
+                for (let s = 0; s < count && i < lines.length; s++) {
+                    const pts = [];
+                    const regex = /\((\d+)\s+(\d+)\)/g;
+                    let m;
+                    while ((m = regex.exec(lines[i])) !== null) {
+                        pts.push({ x: parseInt(m[1]), y: parseInt(m[2]) });
+                    }
+                    if (pts.length) strokes.push(pts);
+                    i++;
+                }
+                chars[char] = { strokes };
+            }
+            return chars;
+        }
+
+        const hiraganaData = parseTomoeData(TOMOE_DATA);
+        let userStrokes = [], currentStroke = [], predictions = [], isDrawing = false;
+        let canvasSize = 320;
+
+        const COLORS = [
+            [99, 102, 241], [16, 185, 129], [245, 158, 11], [236, 72, 153], [6, 182, 212]
+        ];
+
+        function setup() {
+            updateCanvasSize();
+            const canvas = createCanvas(canvasSize, canvasSize);
+            canvas.parent('canvas-container');
+            strokeCap(ROUND);
+            strokeJoin(ROUND);
+            window.addEventListener('resize', () => {
+                updateCanvasSize();
+                resizeCanvas(canvasSize, canvasSize);
+            });
+        }
+
+        function updateCanvasSize() {
+            const container = document.querySelector('.canvas-container');
+            const maxSize = Math.min(container.clientWidth, container.clientHeight) - 4;
+            canvasSize = Math.min(maxSize, 400);
+            const wrapper = document.querySelector('.canvas-wrapper');
+            wrapper.style.width = canvasSize + 'px';
+            wrapper.style.height = canvasSize + 'px';
+        }
+
+        function draw() {
+            background(255);
+            drawHints();
+            stroke(15, 23, 42);
+            strokeWeight(2.5);
+            noFill();
+            userStrokes.forEach(s => { beginShape(); s.forEach(p => vertex(p.x, p.y)); endShape(); });
+            if (currentStroke.length > 0) {
+                beginShape();
+                currentStroke.forEach(p => vertex(p.x, p.y));
+                endShape();
+            }
+        }
+
+        function drawHints() {
+            if (!predictions.length) return;
+            predictions.slice(0, 5).forEach((pred, i) => {
+                const idx = userStrokes.length;
+                if (idx < pred.strokes.length) {
+                    const next = pred.strokes[idx];
+                    const col = COLORS[i];
+                    stroke(col[0], col[1], col[2], 100);
+                    strokeWeight(3);
+                    noFill();
+                    beginShape();
+                    next.forEach((p, j) => {
+                        const sc = scale320(p);
+                        if (j === 0 || j === next.length - 1) vertex(sc.x, sc.y);
+                        curveVertex(sc.x, sc.y);
+                    });
+                    endShape();
+                    const st = scale320(next[0]);
+                    fill(col[0], col[1], col[2], 100);
+                    noStroke();
+                    ellipse(st.x, st.y, 8, 8);
+                }
+            });
+        }
+
+        function scale320(p) {
+            return { x: (p.x / 320) * canvasSize, y: (p.y / 320) * canvasSize };
+        }
+
+        function getCanvasCoords() {
+            const canvas = document.getElementById('defaultCanvas0');
+            if (!canvas) return null;
+            const rect = canvas.getBoundingClientRect();
+            const scaleX = canvasSize / rect.width;
+            const scaleY = canvasSize / rect.height;
+            return { rect, scaleX, scaleY };
+        }
+
+        function mousePressed(e) {
+            const coords = getCanvasCoords();
+            if (!coords) return;
+            const x = (mouseX / coords.rect.width) * canvasSize;
+            const y = (mouseY / coords.rect.height) * canvasSize;
+            if (x >= 0 && x <= canvasSize && y >= 0 && y <= canvasSize) {
+                isDrawing = true;
+                currentStroke = [{ x, y }];
+            }
+        }
+
+        function mouseDragged() {
+            if (!isDrawing) return;
+            const coords = getCanvasCoords();
+            if (!coords) return;
+            const x = (mouseX / coords.rect.width) * canvasSize;
+            const y = (mouseY / coords.rect.height) * canvasSize;
+            if (x >= 0 && x <= canvasSize && y >= 0 && y <= canvasSize) {
+                currentStroke.push({ x, y });
+            }
+        }
+
+        function mouseReleased() {
+            if (isDrawing && currentStroke.length > 1) {
+                userStrokes.push([...currentStroke]);
+                currentStroke = [];
+                updatePredictions();
+            }
+            isDrawing = false;
+        }
+
+        function touchStarted() {
+            if (touches.length > 0) {
+                const t = touches[0];
+                if (t.x >= 0 && t.x <= canvasSize && t.y >= 0 && t.y <= canvasSize) {
+                    isDrawing = true;
+                    currentStroke = [{ x: t.x, y: t.y }];
+                    return false;
+                }
+            }
+        }
+
+        function touchMoved() {
+            if (isDrawing && touches.length > 0) {
+                const t = touches[0];
+                if (t.x >= 0 && t.x <= canvasSize && t.y >= 0 && t.y <= canvasSize) {
+                    currentStroke.push({ x: t.x, y: t.y });
+                }
+                return false;
+            }
+        }
+
+        function touchEnded() {
+            if (isDrawing && currentStroke.length > 1) {
+                userStrokes.push([...currentStroke]);
+                currentStroke = [];
+                updatePredictions();
+            }
+            isDrawing = false;
+            return false;
+        }
+
+        function updatePredictions() {
+            document.getElementById('stroke-count').textContent = userStrokes.length;
+            if (!userStrokes.length) {
+                predictions = [];
+                renderUI([]);
+                return;
+            }
+            const cands = [];
+            for (let [char, data] of Object.entries(hiraganaData)) {
+                const score = calcScore(userStrokes, data.strokes);
+                cands.push({ char, score, strokes: data.strokes });
+            }
+            cands.sort((a, b) => b.score - a.score);
+            predictions = cands;
+            renderUI(cands.filter(c => c.score > 0).slice(0, 10));
+        }
+
+        function calcScore(user, template) {
+            if (user.length > template.length) return 0;
+            let score = 0;
+            for (let i = 0; i < user.length; i++) {
+                const us = user[i], ts = template[i].map(p => ({ x: (p.x / 320) * canvasSize, y: (p.y / 320) * canvasSize }));
+                if (us.length < 2 || ts.length < 2) continue;
+                let ss = 0;
+                const maxD = Math.sqrt(canvasSize * canvasSize * 2);
+                ss += Math.max(0, 1 - dist(us[0].x, us[0].y, ts[0].x, ts[0].y) / (maxD * 0.5)) * 25;
+                ss += Math.max(0, 1 - dist(us[us.length - 1].x, us[us.length - 1].y, ts[ts.length - 1].x, ts[ts.length - 1].y) / (maxD * 0.5)) * 20;
+                const uDir = Math.atan2(us[us.length - 1].y - us[0].y, us[us.length - 1].x - us[0].x) * 180 / Math.PI;
+                const tDir = Math.atan2(ts[ts.length - 1].y - ts[0].y, ts[ts.length - 1].x - ts[0].x) * 180 / Math.PI;
+                let aD = Math.abs(uDir - tDir); if (aD > 180) aD = 360 - aD;
+                ss += (1 - aD / 180) * 15;
+                let uL = 0, tL = 0;
+                for (let j = 1; j < us.length; j++) uL += dist(us[j].x, us[j].y, us[j - 1].x, us[j - 1].y);
+                for (let j = 1; j < ts.length; j++) tL += dist(ts[j].x, ts[j].y, ts[j - 1].x, ts[j - 1].y);
+                if (uL && tL) ss += (Math.min(uL, tL) / Math.max(uL, tL)) * 10;
+                score += ss;
+            }
+            return Math.max(0, Math.min(100, user.length ? score / user.length : 0));
+        }
+
+        function renderUI(cands) {
+            const floatEl = document.getElementById('predictions-float');
+            const hintEl = document.getElementById('canvas-hint');
+
+            if (!cands.length) {
+                floatEl.innerHTML = '';
+                hintEl.style.display = userStrokes.length > 0 ? 'none' : 'block';
+                return;
+            }
+
+            hintEl.style.display = 'none';
+            floatEl.innerHTML = cands.slice(0, 5).map((c, i) => `
+                <div class="pred-item">
+                    <div class="pred-rank" data-r="${i + 1}">${i + 1}</div>
+                    <span class="pred-char">${c.char}</span>
+                    <span class="pred-score">${Math.round(c.score)}%</span>
+                </div>
+            `).join('');
+        }
+
+        function clearCanvas() {
+            userStrokes = [];
+            currentStroke = [];
+            predictions = [];
+            document.getElementById('stroke-count').textContent = '0';
+            renderUI([]);
+        }
+
+        function undoStroke() {
+            if (userStrokes.length) {
+                userStrokes.pop();
+                updatePredictions();
+            }
+        }
+    </script>
+</body>
+
+</html>
