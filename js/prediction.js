@@ -65,17 +65,21 @@ function strokeDistance(userStroke, templateStroke) {
 
     if (u.length < 2 || t.length < 2) return Infinity;
 
-    // ストロークが長すぎる場合はリサンプリング（DTWの計算コスト削減）
+    // 点数の差が大きい場合や、どちらかが長すぎる場合はリサンプリング
+    // tomoeデータは点が少ない（2-9点程度）ので、ユーザーのストロークが多すぎる場合に備える
+    const pointRatio = Math.max(u.length, t.length) / Math.min(u.length, t.length);
     const isComplexStroke = u.length > 20 || t.length > 20;
+    const hasLargePointDifference = pointRatio > 2.0; // 点数の差が2倍以上
     
-    if (isComplexStroke) {
-        // 複雑なストロークはリサンプリングしてからDTW
-        const numPoints = 25;
-    const uResampled = resampleStroke(u, numPoints);
-    const tResampled = resampleStroke(t, numPoints);
+    if (isComplexStroke || hasLargePointDifference) {
+        // リサンプリングしてからDTW（点数の違いを吸収）
+        // 短いストロークでも適切な点数にリサンプリング
+        const numPoints = Math.max(15, Math.min(25, Math.max(u.length, t.length)));
+        const uResampled = resampleStroke(u, numPoints);
+        const tResampled = resampleStroke(t, numPoints);
         return dtwDistance(uResampled, tResampled, 8);
     } else {
-        // 短いストロークはそのままDTW（高精度）
+        // 点数の差が小さい場合はそのままDTW（高精度）
         return dtwDistance(u, t, 5);
     }
 }
@@ -216,16 +220,28 @@ function directionSimilarity(userStroke, templateStroke) {
 
     if (u.length < 2 || t.length < 2) return 0;
 
-    const uDir = Math.atan2(u[u.length-1].y - u[0].y, u[u.length-1].x - u[0].x);
-    const tDir = Math.atan2(t[t.length-1].y - t[0].y, t[t.length-1].x - t[0].x);
-
-    // cos類似度（角度差が小さいほど1に近い）
-    const angleDiff = Math.abs(uDir - tDir);
-    // 角度差が30度（約0.52ラジアン）以上だと大幅にペナルティ
-    if (angleDiff > Math.PI / 6) {
-        return Math.cos(angleDiff) * 0.5; // 大幅に減点
-    }
-    return Math.cos(angleDiff);
+    // 始点から10%地点までの方向
+    const uEarlyIndex = Math.max(1, Math.floor(u.length * 0.1));
+    const tEarlyIndex = Math.max(1, Math.floor(t.length * 0.1));
+    const uStartDir = Math.atan2(u[uEarlyIndex].y - u[0].y, u[uEarlyIndex].x - u[0].x);
+    const tStartDir = Math.atan2(t[tEarlyIndex].y - t[0].y, t[tEarlyIndex].x - t[0].x);
+    const startDirDiff = Math.abs(uStartDir - tStartDir);
+    const startDirSimilarity = Math.cos(startDirDiff);
+    
+    // 終点の最後10%から終点までの方向
+    const uLateIndex = Math.max(0, Math.floor(u.length * 0.9));
+    const tLateIndex = Math.max(0, Math.floor(t.length * 0.9));
+    const uEndDir = Math.atan2(u[u.length-1].y - u[uLateIndex].y, u[u.length-1].x - u[uLateIndex].x);
+    const tEndDir = Math.atan2(t[t.length-1].y - t[tLateIndex].y, t[t.length-1].x - t[tLateIndex].x);
+    const endDirDiff = Math.abs(uEndDir - tEndDir);
+    const endDirSimilarity = Math.cos(endDirDiff);
+    
+    // 始点方向と終点方向の重み付け平均（始点をやや重視）
+    // 角度差が大きい場合はペナルティ
+    const startPenalty = (startDirDiff > Math.PI / 6) ? 0.5 : 1.0;
+    const endPenalty = (endDirDiff > Math.PI / 6) ? 0.5 : 1.0;
+    
+    return (startDirSimilarity * startPenalty * 0.6 + endDirSimilarity * endPenalty * 0.4);
 }
 
 // 複数セグメントでの方向類似度を計算（より精密な方向評価）
@@ -522,10 +538,23 @@ function calcScoreSimple(user, template) {
         const endDist = dist(uEnd.x, uEnd.y, tEnd.x, tEnd.y);
         const endScore = Math.max(0, 1 - endDist / (canvasSize * 0.3));
 
-        // 4. 方向
-        const uDir = Math.atan2(uEnd.y - uStart.y, uEnd.x - uStart.x);
-        const tDir = Math.atan2(tEnd.y - tStart.y, tEnd.x - tStart.x);
-        const dirScore = (Math.cos(uDir - tDir) + 1) / 2;
+        // 4. 方向（書き始めと書き終わりの方向を評価）
+        // 始点から10%地点までの方向
+        const uEarlyIndex = Math.max(1, Math.floor(u.length * 0.1));
+        const tEarlyIndex = Math.max(1, Math.floor(t.length * 0.1));
+        const uStartDir = Math.atan2(u[uEarlyIndex].y - uStart.y, u[uEarlyIndex].x - uStart.x);
+        const tStartDir = Math.atan2(t[tEarlyIndex].y - tStart.y, t[tEarlyIndex].x - tStart.x);
+        const startDirScore = (Math.cos(uStartDir - tStartDir) + 1) / 2;
+        
+        // 終点の最後10%から終点までの方向
+        const uLateIndex = Math.max(0, Math.floor(u.length * 0.9));
+        const tLateIndex = Math.max(0, Math.floor(t.length * 0.9));
+        const uEndDir = Math.atan2(uEnd.y - u[uLateIndex].y, uEnd.x - u[uLateIndex].x);
+        const tEndDir = Math.atan2(tEnd.y - t[tLateIndex].y, tEnd.x - t[tLateIndex].x);
+        const endDirScore = (Math.cos(uEndDir - tEndDir) + 1) / 2;
+        
+        // 始点方向と終点方向の重み付け平均（始点をやや重視）
+        const dirScore = (startDirScore * 0.6 + endDirScore * 0.4);
 
         // 5. 長さ比
         let uLength = 0;
@@ -539,8 +568,14 @@ function calcScoreSimple(user, template) {
         const lengthRatio = tLength > 0 ? uLength / tLength : 1;
         const lengthScore = Math.max(0, 1 - Math.abs(lengthRatio - 1) / 0.5);
 
-        // 各指標を等しく評価（平均）
-        const strokeScore = (shapeScore + startScore + endScore + dirScore + lengthScore) / 5;
+        // 重み付き評価（形状を重視、始点・終点の影響を軽減）
+        const strokeScore = (
+            shapeScore * 0.40 +    // 形状（DTW）: 40% - 膨らみ・結びを反映
+            startScore * 0.12 +   // 始点: 12%
+            endScore * 0.12 +     // 終点: 12%
+            dirScore * 0.20 +     // 方向: 20%
+            lengthScore * 0.16    // 長さ比: 16%
+        );
         totalScore += strokeScore;
     }
 
@@ -645,9 +680,11 @@ function calcScore(user, template) {
         const endDist = dist(uEnd.x, uEnd.y, tEnd.x, tEnd.y);
         // 最後のストロークの場合はより厳密に評価
         const isLastStroke = (i === userLen - 1) && (userLen === templateLen);
+        // 3ストローク目（最後のストローク）は「む」と「お」の識別に重要（位置が違う）
         // 1ストローク目では位置をより厳密に評価（許容範囲を広げるが、評価は重要）
         let endDistThreshold;
         if (isLastStroke) {
+            // 最後のストロークはより厳密に評価（「む」と「お」の識別のため）
             endDistThreshold = canvasSize * 0.2;
         } else if (isFirstStroke && userLen === 1) {
             endDistThreshold = canvasSize * 0.4; // 1ストローク目は許容範囲を広げる
@@ -698,7 +735,7 @@ function calcScore(user, template) {
                     endScore * 18 +          // 終点: 18点（位置を重視）
                     closureScore * 1 +       // 結び: 1点
                     loopMatch * 1 +          // 輪の一致: 1点
-                    lengthRatioScore * 18 + // 長さ比: 18点（重要：「お」は長い）
+                    lengthRatioScore * 18 + // 長さ比: 18点
                     relationshipScore * 0     // ストローク間関係: 0点（最初なのでなし）
                 );
             } else {
